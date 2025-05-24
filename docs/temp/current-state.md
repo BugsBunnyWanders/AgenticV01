@@ -1,28 +1,45 @@
-# Project Status
+# Current Project State
 
-## Tasks Done
-- Implemented client-side audio pause on interruption.
-- Revamped UI for a more advanced/techy look (dark theme, sphere canvas, new controls, "FRIDAY - Interface" header, status display).
-- Implemented 3D particle sphere animation with wavy effect when agent speaks.
-- Implemented Wake Word ("Hey Friday") functionality with app state management and Web Speech API.
-- Addressed `WebSocketDisconnect` errors with asynchronous operations and improved error handling in audio initialization.
-- Fixed "Initializing..." message getting stuck by ensuring DOM elements are assigned on `window.load` and deferring canvas setup.
-- Resolved `TypeError` caused by an obsolete event listener.
-- Added detailed console logging for diagnosing wake word detection and session activation issues.
-- Shifted session termination logic: Client now relies on the agent (server) to close the WebSocket connection upon recognizing "Bye Friday".
-- Implemented a manual "Stop Session" button functionality by repurposing the existing `voiceControlButton`:
-  - Button text and behavior change dynamically based on `appState` (session active vs. not active).
-  - Allows user to explicitly terminate an active session via UI click.
-- Resolved ADK `ValidationError` in `main.py` by correctly `await`ing `session_service.create_session()` and restructuring session initialization within the async WebSocket endpoint.
+## Task Status
 
-## In Progress
-- Testing the fix for the ADK `ValidationError` and overall application stability.
+### Done
+- Initial project setup (FastAPI backend, JS frontend).
+- WebSocket communication (text, audio).
+- "Jarvis-like" animated sphere UI with agent speech reaction.
+- Audio streaming (client to server) & playback (server to client).
+- Session management (UI button start/stop).
+- Text input functionality.
+- Server-side and client-side audio interruption handling.
+- Dark theme.
+- Server-initiated session termination (e.g., via WebSocket close).
+- Refactor: Direct session start (removed wake word).
+- BugFix: `WebSocketDisconnect (1001, '')` by making audio setup async and adding delays.
+- BugFix: UI stuck on "Initializing..." by ensuring DOM loaded and removing old listeners.
+- BugFix: `await session_service.create_session()` in `main.py`.
+- BugFix: Text input enablement on WebSocket open.
+- Enhanced ADK event logging in `main.py`.
+- Implemented browser interaction tools (Selenium-based).
+- Implemented screenshot mechanism for browser tools.
+- Created `requirements.txt`.
+- Added `BuiltInCodeExecutor` to agent.
+- BugFix: `pydantic_core.ValidationError` for `BuiltInCodeExecutor` instantiation.
+- BugFix: `TypeError` for `code_execution_result` logging.
+- Improvement: Client-side audio input buffering for smoother audio.
+- Created `.gitignore`.
+- Pushed initial project to GitHub.
+- Created `docs/temp/feature-design.md`.
+- Created `docs/temp/changelog.md`.
+- Created `docs/temp/memory.md`.
+- Updated `docs/temp/current-state.md`.
 
-## To Do
-- Backend: Agent logic needs to be updated to close WebSocket on "Bye Friday" command for server-initiated session termination to be fully functional.
-- Investigate `pcm-player-processor.js` if issues persist with audio interruption.
-- Refine particle sphere animation (performance, visuals).
-- Enhance styling for message display.
-- Further improve robustness and error handling for Web Speech API if needed.
-- Investigate any remaining causes of double WebSocket connections if the issue persists.
-- Further improve UI/UX based on feedback. 
+### In Progress
+- Fine-tuning audio interruption to be even more responsive (ongoing observation).
+- Testing and refinement of browser tools with complex web pages.
+
+### To Do (Future)
+- Implement more sophisticated error handling and user feedback on UI.
+- Add comprehensive tests (unit, integration).
+- Secure API keys and sensitive configurations properly.
+- Investigate and implement server-side audio buffering for agent responses if needed.
+- Explore options for reducing LLM response latency for audio.
+- Add a README.md to the project root. 
