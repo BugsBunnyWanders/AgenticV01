@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+google-adk
+selenium
+webdriver-manager
+markdownify
+requests
+google-generativeai
+aiohttp
+# google-cloud-aiplatform # Add if direct use is confirmed elsewhere 
