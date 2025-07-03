@@ -49,6 +49,10 @@ from tools.browser_tool import SCREENSHOT_ACTION_FILENAME # Import the screensho
 # Load Gemini API Key
 load_dotenv()
 
+# print the GOOGLE_API_KEY
+print(os.getenv("GOOGLE_API_KEY"))
+
+
 APP_NAME = "ADK Streaming example"
 session_service = InMemorySessionService()
 

@@ -7,5 +7,8 @@ webdriver-manager
 markdownify
 requests
 google-generativeai
-aiohttp
-# google-cloud-aiplatform # Add if direct use is confirmed elsewhere 
+# google-generativeai
+# websockets
+# aiohttp
+# google-cloud-aiplatform
+sqlalchemy-sqlitecloud 

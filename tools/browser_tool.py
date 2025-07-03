@@ -8,6 +8,8 @@ from selenium.webdriver.chrome.service import Service as ChromeService
 import markdownify
 from typing import List, Dict, Union, Optional
 import os
+from google import genai# Added for the new vision tool
+from PIL import Image # Though not used if uploading by path
 
 # --- Global WebDriver instance ---
 # This is a simple way to share the driver across tool calls within the same agent process.
@@ -16,17 +18,24 @@ _driver = None
 _current_url_in_driver = None
 SCREENSHOT_ACTION_FILENAME = "action_screenshot.jpeg"
 SCREENSHOT_BROWSE_FILENAME = SCREENSHOT_ACTION_FILENAME
+VISION_ANALYSIS_SCREENSHOT_FILENAME = "vision_analysis_temp.jpeg" # Reverted to a unique temporary name
 
-def _get_driver() -> webdriver.Chrome:
-    """Initializes and returns a headless Chrome WebDriver instance, or returns existing one."""
+def _get_driver(headless: bool = False) -> webdriver.Chrome:
+    """Initializes and returns a Chrome WebDriver instance, or returns existing one."""
     global _driver
     if _driver is None:
-        print("[WebDriver] Initializing new headless Chrome driver...")
+        print(f"[WebDriver] Initializing new Chrome driver (headless: {headless})...")
         chrome_options = webdriver.ChromeOptions()
-        chrome_options.add_argument("--headless")
+        if headless:
+            chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage") # common in Docker/CI
         chrome_options.add_argument("window-size=1920,1080") # Set a reasonable window size
+        # The following line is for incognito mode, which can be useful for fresh sessions
+        # chrome_options.add_argument("--incognito") 
+        # Allow popups, as some sign-in flows use them
+        # chrome_options.add_argument("--disable-popup-blocking")
+
         try:
             # Explicitly use ChromeDriverManager to install/manage chromedriver
             print("[WebDriver] Using ChromeDriverManager to get/install ChromeDriver...")
@@ -314,6 +323,60 @@ def scroll_page_at_url(url: str, direction: str) -> str:
         error_message = f"Error scrolling {direction} on {url}: {str(e)}"
         return error_message
 
+def analyze_current_view_with_gemini(prompt: str) -> str:
+    """
+    Captures the current browser view, sends it with a prompt to a Gemini vision model for analysis,
+    and returns the textual description or answer.
+    Use this tool if you need to understand visual elements not easily parsed from markdown,
+    or to get a description/analysis of the current view based on a specific question.
+    Example prompt: "What is the main headline on this page?" or "Describe the layout of this form."
+    """
+    global _driver
+    if not _driver:
+        return "Error: Browser is not active. Please use 'browse_url' first."
+
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return "Error: GOOGLE_API_KEY not found in environment variables."
+
+    try:
+        print(f"[WebDriver] Capturing screenshot for Gemini analysis: {VISION_ANALYSIS_SCREENSHOT_FILENAME}")
+        if not _capture_and_save_screenshot(_driver, VISION_ANALYSIS_SCREENSHOT_FILENAME):
+            return "Error: Failed to capture screenshot for analysis."
+
+        print(f"[GeminiVision] Initializing Gemini client for model 'gemini-2.0-flash'.")
+        # Using the client structure from the user's snippet
+        client = genai.Client(api_key=api_key)
+        
+        print(f"[GeminiVision] Uploading file: {VISION_ANALYSIS_SCREENSHOT_FILENAME}")
+        # client.files.upload expects 'file' not 'path' as per Gemini documentation
+        uploaded_file = client.files.upload(file_path=VISION_ANALYSIS_SCREENSHOT_FILENAME) # Corrected: using file_path
+        print(f"[GeminiVision] File uploaded successfully: {uploaded_file.name}")
+
+        print(f"[GeminiVision] Generating content with prompt: '{prompt}'")
+        # Using the model name from the user's snippet
+        response = client.models.generate_content(
+            model="gemini-2.0-flash", # As per user's snippet
+            contents=[uploaded_file, prompt], # Pass the file object and the prompt
+        )
+        
+        analysis_text = response.text
+        print(f"[GeminiVision] Analysis received: {analysis_text[:200]}...")
+        
+        return analysis_text
+
+    except Exception as e:
+        error_message = f"Error during Gemini vision analysis: {str(e)}"
+        print(f"[GeminiVision ERROR] {error_message}")
+        return error_message
+    finally:
+        if os.path.exists(VISION_ANALYSIS_SCREENSHOT_FILENAME):
+            try:
+                os.remove(VISION_ANALYSIS_SCREENSHOT_FILENAME)
+                print(f"[GeminiVision] Cleaned up temporary screenshot: {VISION_ANALYSIS_SCREENSHOT_FILENAME}")
+            except Exception as e_remove:
+                print(f"[GeminiVision ERROR] Failed to remove temporary screenshot {VISION_ANALYSIS_SCREENSHOT_FILENAME}: {e_remove}")
+
 def close_browser_session() -> str:
     """Closes the shared browser session if it's active."""
     global _driver, _current_url_in_driver
@@ -322,10 +385,18 @@ def close_browser_session() -> str:
             print("[WebDriver] Closing browser session...")
             # Before quitting, ensure any saved screenshot files are cleaned up if they are temporary.
             # For now, these filenames are fixed, so they will be overwritten.
-            # If we used unique filenames per action, cleanup would be more important here.
             # Example:
             # if os.path.exists(SCREENSHOT_ACTION_FILENAME): os.remove(SCREENSHOT_ACTION_FILENAME)
             # if os.path.exists(SCREENSHOT_BROWSE_FILENAME): os.remove(SCREENSHOT_BROWSE_FILENAME)
+            
+            # Clean up the screenshot file when explicitly closing the browser
+            if os.path.exists(SCREENSHOT_ACTION_FILENAME):
+                try:
+                    os.remove(SCREENSHOT_ACTION_FILENAME)
+                    print(f"[WebDriver] Removed screenshot file {SCREENSHOT_ACTION_FILENAME} during browser close.")
+                except Exception as e_remove:
+                    print(f"[WebDriver] Error removing screenshot file {SCREENSHOT_ACTION_FILENAME}: {e_remove}")
+
             _driver.quit()
             return "Browser session closed successfully."
         except Exception as e:
@@ -339,6 +410,66 @@ def close_browser_session() -> str:
         print("[WebDriver] close_browser_session called but no active driver found.")
         return "No active browser session to close."
 
+def sign_in_to_website(url: str, username_field_xpath: str, password_field_xpath: str, submit_button_xpath: str, username: str, password: str) -> str:
+    """
+    Navigates to the login page URL, enters username and password into specified fields,
+    clicks the submit button, and saves a screenshot.
+    Returns a status string.
+    """
+    global _current_url_in_driver
+    try:
+        driver = _get_driver() # Ensures driver is non-headless by default now
+        _navigate_if_needed(driver, url)
+
+        # Type username
+        print(f"[WebDriver] Attempting to find username field by XPath: {username_field_xpath}")
+        username_element = driver.find_element(By.XPATH, username_field_xpath)
+        username_element.clear()
+        username_element.send_keys(username)
+        print(f"[WebDriver] Typed username into element: {username_field_xpath}")
+
+        # Type password
+        print(f"[WebDriver] Attempting to find password field by XPath: {password_field_xpath}")
+        password_element = driver.find_element(By.XPATH, password_field_xpath)
+        password_element.clear()
+        password_element.send_keys(password)
+        print(f"[WebDriver] Typed password into element: {password_field_xpath}")
+
+        # Click submit button
+        print(f"[WebDriver] Attempting to find submit button by XPath: {submit_button_xpath}")
+        submit_button_element = driver.find_element(By.XPATH, submit_button_xpath)
+        submit_button_element.click()
+        print(f"[WebDriver] Clicked submit button: {submit_button_xpath}")
+        
+        driver.implicitly_wait(2) # Wait for potential page load/redirect
+
+        new_url = driver.current_url
+        _current_url_in_driver = new_url.strip('/')
+        
+        _capture_and_save_screenshot(driver, SCREENSHOT_ACTION_FILENAME)
+        
+        return f"Attempted sign-in for user '{username}' on {url}. Current URL is now: {new_url}. Review screenshot."
+
+    except NoSuchElementException as e:
+        _current_url_in_driver = None # Reset current URL as action failed
+        element_xpath = str(e.msg).split("xpath: ")[-1].split("\n")[0] if e.msg else "unknown element"
+        error_message = f"Error during sign-in on {url}: Could not find element with XPath '{element_xpath}'. Ensure XPaths are correct. Details: {str(e)}"
+        print(f"[WebDriver ERROR] {error_message}")
+        return error_message
+    except TimeoutException as e:
+        _current_url_in_driver = driver.current_url.strip('/') if _driver else None # Update URL if possible
+        error_message = f"Timeout during sign-in process on {url}. Page may have been slow to load or an element was not interactable in time. Details: {str(e)}"
+        print(f"[WebDriver ERROR] {error_message}")
+        _capture_and_save_screenshot(driver, SCREENSHOT_ACTION_FILENAME) # Capture state on timeout
+        return error_message
+    except Exception as e:
+        _current_url_in_driver = driver.current_url.strip('/') if _driver else None # Update URL if possible
+        error_message = f"An unexpected error occurred during sign-in on {url}: {str(e)}"
+        print(f"[WebDriver ERROR] {error_message}")
+        if _driver: # Capture screenshot if driver still exists
+             _capture_and_save_screenshot(driver, SCREENSHOT_ACTION_FILENAME)
+        return error_message
+
 # Note: The agent instructions will need to guide the LLM on how to use these tools sequentially.
 # e.g., 1. browse_url (or navigate_to_url if we add it)
 #       2. find_interactive_elements (optionally with keywords)
@@ -349,3 +480,10 @@ def close_browser_session() -> str:
 # A robust implementation of `find_interactive_elements` should return full XPaths as `id` values.
 # Then, `click_element_by_id` and `type_into_element_by_id` can directly use that XPath.
 # I have updated click and type tools to directly use the passed element_id as an XPath.
+
+# New sign_in_to_website tool also relies on XPaths identified by find_interactive_elements.
+# The LLM agent should be instructed to:
+# 1. Navigate to the login page URL.
+# 2. Use find_interactive_elements to identify XPaths for username, password, and submit button.
+# 3. Use the sign_in_to_website tool with these XPaths and user-provided credentials.
+# 4. Handle potential failures (e.g., incorrect XPaths, CAPTCHAs, 2FA).
