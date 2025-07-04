@@ -225,14 +225,48 @@ async def client_to_agent_messaging(websocket, live_request_queue):
 
 app = FastAPI()
 
-STATIC_DIR = Path("static")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-
-@app.get("/")
-async def root():
-    """Serves the index.html"""
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+# Serve React build files
+REACT_BUILD_DIR = Path("frontend/build")
+if REACT_BUILD_DIR.exists():
+    # Serve static assets (JS, CSS, etc.)
+    app.mount("/static", StaticFiles(directory=REACT_BUILD_DIR / "static"), name="static")
+    
+    @app.get("/")
+    async def root():
+        """Serves the React index.html"""
+        return FileResponse(REACT_BUILD_DIR / "index.html")
+    
+    # Serve audio worklet files directly from build directory
+    @app.get("/pcm-player-processor.js")
+    async def pcm_player_processor():
+        """Serves the PCM player processor worklet"""
+        return FileResponse(REACT_BUILD_DIR / "pcm-player-processor.js", media_type="application/javascript")
+    
+    @app.get("/pcm-recorder-processor.js")
+    async def pcm_recorder_processor():
+        """Serves the PCM recorder processor worklet"""
+        return FileResponse(REACT_BUILD_DIR / "pcm-recorder-processor.js", media_type="application/javascript")
+    
+    # Catch-all route for React Router (SPA routing)
+    @app.get("/{path:path}")
+    async def catch_all(path: str):
+        """Catch-all route for React Router"""
+        # Check if it's an API route or WebSocket
+        if path.startswith("ws/") or path.startswith("api/"):
+            return {"error": "Not found"}
+        # Don't serve index.html for .js files
+        if path.endswith(".js"):
+            return {"error": "Not found"}
+        return FileResponse(REACT_BUILD_DIR / "index.html")
+else:
+    # Fallback to old static directory if React build doesn't exist
+    STATIC_DIR = Path("static")
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    
+    @app.get("/")
+    async def root():
+        """Serves the static index.html"""
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
 @app.websocket("/ws/{session_id}")

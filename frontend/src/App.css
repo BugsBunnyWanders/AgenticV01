@@ -1,0 +1,198 @@
+body {
+  background-color: #1a1a1d; /* Dark background */
+  color: #c5c6c7; /* Light grey text */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  height: 100vh;
+  overflow: hidden; /* Hide scrollbars from body */
+}
+
+.App {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  height: 100vh;
+  width: 100%;
+  background-color: #1a1a1d;
+  color: #c5c6c7;
+}
+
+.app-header {
+  width: 100%;
+  padding: 10px 0;
+  text-align: center;
+  font-size: 1.5em;
+  color: #61dafb; /* Techy blue */
+  border-bottom: 1px solid #333;
+}
+
+.main-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 800px; /* Limit width for better layout */
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.status-display {
+  color: #61dafb;
+  font-size: 1.1em;
+  margin-bottom: 20px;
+  min-height: 1.5em; /* Reserve space to prevent layout shifts */
+  text-align: center;
+}
+
+.sphere-container {
+  width: 300px;
+  height: 300px;
+  margin-bottom: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.controls {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+  align-items: center;
+  width: 100%;
+  max-width: 600px;
+}
+
+.controls button, .controls input[type="text"] {
+  background-color: #2a2a2e;
+  color: #c5c6c7;
+  border: 1px solid #61dafb;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1em;
+  transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+.controls button:hover:not(:disabled) {
+  background-color: #3a3a3e;
+  box-shadow: 0 0 8px #61dafb;
+}
+
+.controls button:disabled {
+  border-color: #555;
+  color: #777;
+  cursor: not-allowed;
+}
+
+.controls input[type="text"] {
+  flex-grow: 1;
+  min-width: 200px;
+}
+
+.voice-control-button {
+  white-space: nowrap;
+}
+
+.message-input-container {
+  display: flex;
+  gap: 10px;
+  flex-grow: 1;
+}
+
+.message-input {
+  flex-grow: 1;
+  background-color: #2a2a2e;
+  color: #c5c6c7;
+  border: 1px solid #61dafb;
+  padding: 10px 15px;
+  border-radius: 5px;
+  font-size: 1em;
+  outline: none;
+}
+
+.message-input:focus {
+  box-shadow: 0 0 8px #61dafb;
+}
+
+.send-button {
+  background-color: #2a2a2e;
+  color: #c5c6c7;
+  border: 1px solid #61dafb;
+  padding: 10px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 1em;
+  transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+.send-button:hover:not(:disabled) {
+  background-color: #3a3a3e;
+  box-shadow: 0 0 8px #61dafb;
+}
+
+.send-button:disabled {
+  border-color: #555;
+  color: #777;
+  cursor: not-allowed;
+}
+
+.messages {
+  width: 100%;
+  height: 150px; /* Fixed height for messages */
+  overflow-y: auto;
+  border: 1px solid #333;
+  padding: 10px;
+  background-color: #222225;
+  border-radius: 5px;
+  margin-top: 20px; /* Space above messages */
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.message {
+  margin: 5px 0;
+  padding: 8px;
+  border-radius: 5px;
+  word-wrap: break-word;
+}
+
+.message.user {
+  background-color: #2a4d3a;
+  border-left: 3px solid #61dafb;
+}
+
+.message.agent {
+  background-color: #2a2a3a;
+  border-left: 3px solid #ff8c00;
+}
+
+.message.system {
+  background-color: #3a2a2a;
+  border-left: 3px solid #888;
+  font-style: italic;
+}
+
+.message-content {
+  margin: 0;
+}
+
+.message-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 5px;
+  margin-top: 10px;
+}
+
+.sphere-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%; /* Make it look like a sphere even if canvas is square */
+}
