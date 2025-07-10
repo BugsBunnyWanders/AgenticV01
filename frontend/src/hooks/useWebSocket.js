@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-export const useWebSocket = (setMessages, setStatus, setIsAgentSpeaking) => {
+export const useWebSocket = (setMessages, setStatus, setIsAgentSpeaking, setGeneratedImages, setShowImageDisplay) => {
   const [websocket, setWebsocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const websocketRef = useRef(null);
@@ -104,6 +104,25 @@ export const useWebSocket = (setMessages, setStatus, setIsAgentSpeaking) => {
               content: message.data,
               timestamp: Date.now()
             }]);
+          } else if (message.mime_type === 'image/generated') {
+            // Handle generated images
+            console.log('Generated image received:', message.filename);
+            const newImage = {
+              data: message.data,
+              filename: message.filename,
+              timestamp: Date.now()
+            };
+            
+            setGeneratedImages(prev => [...prev, newImage]);
+            setShowImageDisplay(true);
+            
+            // Also add to messages for history
+            setMessages(prev => [...prev, {
+              type: 'image',
+              content: message.data,
+              filename: message.filename,
+              timestamp: Date.now()
+            }]);
           } else if (message.mime_type === 'audio/pcm') {
             // Handle audio playback
             console.log('Audio PCM data received');
@@ -174,7 +193,7 @@ export const useWebSocket = (setMessages, setStatus, setIsAgentSpeaking) => {
       console.error('Error creating WebSocket:', error);
       setStatus('Failed to connect');
     }
-  }, [setMessages, setStatus, setIsAgentSpeaking]);
+  }, [setMessages, setStatus, setIsAgentSpeaking, setGeneratedImages, setShowImageDisplay]);
 
   const sendMessage = useCallback((message) => {
     if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {

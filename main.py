@@ -124,8 +124,8 @@ async def agent_to_client_messaging(websocket, live_events):
                         audio_data = part.inline_data.data
                         if audio_data:
                             message_to_send = {
-                                "mime_type": "audio/pcm",
-                                "data": base64.b64encode(audio_data).decode("ascii")
+                            "mime_type": "audio/pcm",
+                            "data": base64.b64encode(audio_data).decode("ascii")
                             }
                             log_message = f"audio/pcm: {len(audio_data)} bytes."
                     # REMOVED: Direct image handling from part.inline_data for tool responses
@@ -143,10 +143,14 @@ async def agent_to_client_messaging(websocket, live_events):
                             # Try to get tool name from the function_response if available, or function_call if it's part of an invocation echo
                             if part.function_response and part.function_response.name:
                                 tool_name_if_any = part.function_response.name
+                                print(f"[TOOL_DEBUG]: Detected tool name from function_response: {tool_name_if_any}")
                             elif part.function_call and part.function_call.name:
                                 tool_name_if_any = part.function_call.name # This might be the case if the LLM is just saying it will call a tool
+                                print(f"[TOOL_DEBUG]: Detected tool name from function_call: {tool_name_if_any}")
                             else:
                                 tool_name_if_any = "unknown_tool_from_text_part" # Fallback
+                                print(f"[TOOL_DEBUG]: No tool name detected, using fallback: {tool_name_if_any}")
+                                print(f"[TOOL_DEBUG]: Part details - function_response: {part.function_response}, function_call: {part.function_call}")
                     elif part.code_execution_result:
                         # Ensure output is treated as a string
                         output_str = str(part.code_execution_result.output if part.code_execution_result.output is not None else "")
@@ -168,9 +172,10 @@ async def agent_to_client_messaging(websocket, live_events):
                     else:
                         print(f"[AGENT TO CLIENT]: Skipping empty or unhandled part: {part}")
                 
-                # After processing all parts, if a tool response text was sent, check for screenshot
+                # After processing all parts, if a tool response text was sent, check for screenshot or generated images
                 # Only check for screenshots if the tool is one that's expected to produce one.
                 browser_tools_that_screenshot = ["browse_url", "click_element_by_id", "type_into_element_by_id", "scroll_page_at_url"]
+                image_generation_tools = ["create_image"]
 
                 if is_tool_response_text and tool_name_if_any in browser_tools_that_screenshot:
                     print(f"[AGENT TO CLIENT]: Tool '{tool_name_if_any}' text response sent, checking for screenshot: {SCREENSHOT_ACTION_FILENAME}")
@@ -189,6 +194,77 @@ async def agent_to_client_messaging(websocket, live_events):
                             print(f"[AGENT TO CLIENT ERROR]: Failed to read/send screenshot {SCREENSHOT_ACTION_FILENAME}: {e_screenshot}")
                     else:
                         print(f"[AGENT TO CLIENT]: Screenshot file {SCREENSHOT_ACTION_FILENAME} not found after tool {tool_name_if_any} execution.")
+                
+                # Check for generated images after image generation tools
+                elif is_tool_response_text and tool_name_if_any in image_generation_tools:
+                    print(f"[AGENT TO CLIENT]: Tool '{tool_name_if_any}' text response sent, checking for generated images in assets/images/")
+                    try:
+                        # Get the most recently modified image file in assets/images
+                        images_dir = Path("assets/images")
+                        print(f"[IMAGE_DEBUG]: Checking images directory: {images_dir.absolute()}, exists: {images_dir.exists()}")
+                        if images_dir.exists():
+                            all_files = list(images_dir.iterdir())
+                            print(f"[IMAGE_DEBUG]: All files in directory: {[f.name for f in all_files]}")
+                            image_files = [f for f in all_files if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']]
+                            print(f"[IMAGE_DEBUG]: Image files found: {[f.name for f in image_files]}")
+                            if image_files:
+                                # Get the most recently modified image
+                                latest_image = max(image_files, key=lambda f: f.stat().st_mtime)
+                                print(f"[AGENT TO CLIENT]: Found latest generated image: {latest_image}")
+                                
+                                # Send the image to the client
+                                with open(latest_image, "rb") as f_img:
+                                    image_data = f_img.read()
+                                
+                                image_message = {
+                                    "mime_type": "image/generated",
+                                    "data": base64.b64encode(image_data).decode("utf-8"),
+                                    "filename": latest_image.name
+                                }
+                                await websocket.send_text(json.dumps(image_message))
+                                print(f"[AGENT TO CLIENT]: Sent generated image {latest_image.name} ({len(image_data)} bytes).")
+                            else:
+                                print(f"[AGENT TO CLIENT]: No image files found in assets/images after image generation.")
+                        else:
+                            print(f"[AGENT TO CLIENT]: assets/images directory not found.")
+                    except Exception as e_image:
+                        print(f"[AGENT TO CLIENT ERROR]: Failed to read/send generated image: {e_image}")
+                
+                # Also check for any tool response that might be from image generation (fallback detection)
+                elif is_tool_response_text and (not tool_name_if_any or tool_name_if_any == "unknown_tool_from_text_part"):
+                    print(f"[AGENT TO CLIENT]: Tool response with unknown/missing name detected, checking for generated images as fallback")
+                    # Check if the text contains image generation keywords
+                    if any(part.text and ("image" in part.text.lower() or "generated" in part.text.lower() or "created" in part.text.lower()) for part in event.content.parts if part.text):
+                        try:
+                            images_dir = Path("assets/images")
+                            print(f"[IMAGE_DEBUG_FALLBACK]: Checking images directory: {images_dir.absolute()}, exists: {images_dir.exists()}")
+                            if images_dir.exists():
+                                all_files = list(images_dir.iterdir())
+                                print(f"[IMAGE_DEBUG_FALLBACK]: All files in directory: {[f.name for f in all_files]}")
+                                image_files = [f for f in all_files if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']]
+                                print(f"[IMAGE_DEBUG_FALLBACK]: Image files found: {[f.name for f in image_files]}")
+                                if image_files:
+                                    # Get the most recently modified image (within last 10 seconds to avoid old images)
+                                    import time
+                                    current_time = time.time()
+                                    recent_images = [f for f in image_files if current_time - f.stat().st_mtime < 10]
+                                    if recent_images:
+                                        latest_image = max(recent_images, key=lambda f: f.stat().st_mtime)
+                                        print(f"[AGENT TO CLIENT]: Found recent generated image via fallback: {latest_image}")
+                                        
+                                        # Send the image to the client
+                                        with open(latest_image, "rb") as f_img:
+                                            image_data = f_img.read()
+                                        
+                                        image_message = {
+                                            "mime_type": "image/generated",
+                                            "data": base64.b64encode(image_data).decode("utf-8"),
+                                            "filename": latest_image.name
+                                        }
+                                        await websocket.send_text(json.dumps(image_message))
+                                        print(f"[AGENT TO CLIENT]: Sent generated image via fallback {latest_image.name} ({len(image_data)} bytes).")
+                        except Exception as e_image:
+                            print(f"[AGENT TO CLIENT ERROR]: Failed to read/send generated image via fallback: {e_image}")
 
             elif event.content: 
                  print(f"[AGENT TO CLIENT]: Event has content but no parts: {event.content}")
@@ -247,6 +323,16 @@ if REACT_BUILD_DIR.exists():
         """Serves the PCM recorder processor worklet"""
         return FileResponse(REACT_BUILD_DIR / "pcm-recorder-processor.js", media_type="application/javascript")
     
+    # Serve images from assets/images directory
+    @app.get("/api/images/{image_name}")
+    async def serve_image(image_name: str):
+        """Serves images from assets/images directory"""
+        image_path = Path("assets/images") / image_name
+        if image_path.exists() and image_path.is_file():
+            return FileResponse(image_path)
+        else:
+            return {"error": "Image not found"}
+    
     # Catch-all route for React Router (SPA routing)
     @app.get("/{path:path}")
     async def catch_all(path: str):
@@ -262,11 +348,11 @@ else:
     # Fallback to old static directory if React build doesn't exist
     STATIC_DIR = Path("static")
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-    
-    @app.get("/")
-    async def root():
-        """Serves the static index.html"""
-        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+@app.get("/")
+async def root():
+    """Serves the static index.html"""
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
 @app.websocket("/ws/{session_id}")

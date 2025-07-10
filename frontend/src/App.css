@@ -14,6 +14,16 @@ body {
 
 .App {
   display: flex;
+  height: 100vh;
+  width: 100%;
+  background-color: #1a1a1d;
+  color: #c5c6c7;
+  position: relative;
+  overflow: hidden;
+}
+
+.main-interface {
+  display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: space-between;
@@ -21,15 +31,63 @@ body {
   width: 100%;
   background-color: #1a1a1d;
   color: #c5c6c7;
+  transition: width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  position: relative;
+  z-index: 1;
+}
+
+.main-interface.docked {
+  width: 50%;
+  transform: translateX(-25%);
 }
 
 .app-header {
   width: 100%;
-  padding: 10px 0;
+  padding: 15px 0;
   text-align: center;
   font-size: 1.5em;
   color: #61dafb; /* Techy blue */
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid rgba(97, 218, 251, 0.3);
+  background: linear-gradient(90deg, transparent, rgba(97, 218, 251, 0.05), transparent);
+  text-shadow: 0 0 10px rgba(97, 218, 251, 0.5);
+  letter-spacing: 3px;
+  font-weight: bold;
+  position: relative;
+  overflow: hidden;
+}
+
+.app-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(97, 218, 251, 0.1), transparent);
+  animation: headerSweep 3s ease-in-out infinite;
+}
+
+@keyframes headerSweep {
+  0% { left: -100%; }
+  50% { left: 100%; }
+  100% { left: -100%; }
+}
+
+.main-interface.docked .app-header {
+  animation: dockingGlow 0.8s ease-out;
+}
+
+@keyframes dockingGlow {
+  0% { 
+    box-shadow: none;
+  }
+  50% { 
+    box-shadow: 0 0 20px rgba(97, 218, 251, 0.6);
+  }
+  100% { 
+    box-shadow: none;
+  }
 }
 
 .main-content {
@@ -59,6 +117,31 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.main-interface.docked .sphere-container {
+  width: 200px;
+  height: 200px;
+  margin-bottom: 20px;
+}
+
+.sphere-container::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
+  border: 1px solid rgba(97, 218, 251, 0.2);
+  border-radius: 50%;
+  animation: orbitalRing 8s linear infinite;
+}
+
+@keyframes orbitalRing {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .controls {
@@ -195,4 +278,73 @@ body {
   width: 100%;
   height: 100%;
   border-radius: 50%; /* Make it look like a sphere even if canvas is square */
+}
+
+/* Enhanced responsive design */
+@media (max-width: 768px) {
+  .main-interface.docked {
+    width: 100%;
+    transform: translateY(-50%);
+  }
+  
+  .sphere-container {
+    width: 200px;
+    height: 200px;
+  }
+  
+  .main-interface.docked .sphere-container {
+    width: 150px;
+    height: 150px;
+  }
+  
+  .controls {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .message-input-container {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header {
+    font-size: 1.2em;
+    padding: 10px 0;
+    letter-spacing: 1px;
+  }
+  
+  .sphere-container {
+    width: 150px;
+    height: 150px;
+  }
+  
+  .main-interface.docked .sphere-container {
+    width: 120px;
+    height: 120px;
+  }
+}
+
+/* Additional JARVIS-style enhancements */
+.main-content {
+  position: relative;
+}
+
+.main-content::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(circle at 20% 80%, rgba(97, 218, 251, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(97, 218, 251, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.status-display {
+  position: relative;
+  z-index: 2;
 }

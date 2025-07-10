@@ -3,6 +3,7 @@ import './App.css';
 import ParticleSphere from './components/ParticleSphere';
 import MessageInput from './components/MessageInput';
 import MessageDisplay from './components/MessageDisplay';
+import ImageDisplay from './components/ImageDisplay';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudio } from './hooks/useAudio';
 
@@ -11,6 +12,8 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [status, setStatus] = useState('Initializing...');
   const [isAgentSpeaking, setIsAgentSpeaking] = useState(false);
+  const [generatedImages, setGeneratedImages] = useState([]);
+  const [showImageDisplay, setShowImageDisplay] = useState(false);
   // const [isAudioMode, setIsAudioMode] = useState(false);
 
   const {
@@ -21,7 +24,7 @@ function App() {
     disconnect,
     setAudioPlayer,
     setReinitializeAudioPlayer
-  } = useWebSocket(setMessages, setStatus, setIsAgentSpeaking);
+  } = useWebSocket(setMessages, setStatus, setIsAgentSpeaking, setGeneratedImages, setShowImageDisplay);
 
   const {
     isAudioEnabled,
@@ -66,38 +69,50 @@ function App() {
     }
   }, [isAudioEnabled, isActivating, startAudio, stopAudio]);
 
+  const handleCloseImageDisplay = useCallback(() => {
+    setShowImageDisplay(false);
+  }, []);
+
   return (
     <div className="App">
-      <header className="app-header">
-        FRIDAY - Interface
-      </header>
+      <div className={`main-interface ${showImageDisplay ? 'docked' : ''}`}>
+        <header className="app-header">
+          FRIDAY - Interface
+        </header>
 
-      <div className="main-content">
-        <div className="status-display">
-          {status}
+        <div className="main-content">
+          <div className="status-display">
+            {status}
+          </div>
+
+          <div className="sphere-container">
+            <ParticleSphere isAgentSpeaking={isAgentSpeaking} />
+          </div>
+
+          <div className="controls">
+            <MessageInput 
+              onSendMessage={handleSendMessage}
+              disabled={!isConnected}
+            />
+            <button 
+              type="button" 
+              className="voice-control-button"
+              onClick={handleToggleAudio}
+              disabled={!isConnected || isActivating}
+            >
+              {isActivating ? 'Activating...' : (isAudioEnabled ? 'Stop Session' : 'Start Session')}
+            </button>
+          </div>
+
+          <MessageDisplay messages={messages} />
         </div>
-
-        <div className="sphere-container">
-          <ParticleSphere isAgentSpeaking={isAgentSpeaking} />
-        </div>
-
-        <div className="controls">
-          <MessageInput 
-            onSendMessage={handleSendMessage}
-            disabled={!isConnected}
-          />
-          <button 
-            type="button" 
-            className="voice-control-button"
-            onClick={handleToggleAudio}
-            disabled={!isConnected || isActivating}
-          >
-            {isActivating ? 'Activating...' : (isAudioEnabled ? 'Stop Session' : 'Start Session')}
-          </button>
-        </div>
-
-        <MessageDisplay messages={messages} />
       </div>
+
+      <ImageDisplay 
+        images={generatedImages}
+        isVisible={showImageDisplay}
+        onClose={handleCloseImageDisplay}
+      />
     </div>
   );
 }

@@ -12,6 +12,7 @@ from tools.browser_tool import (
     sign_in_to_website,
     analyze_current_view_with_gemini
 )
+from model_generation_agent.agent import image_agent
 # Import Content and Part if they were to be used directly in agent logic, but tools return them.
 # from google.genai.types import Content, Part 
 
@@ -36,6 +37,7 @@ root_agent = Agent(
     - analyze_current_view_with_gemini: Captures the current browser view, sends it with your specified prompt to a vision model for analysis, and returns the textual description or answer. Use this if you need to understand visual elements not easily parsed from text/markdown, or to get a specific visual question answered about the current page. Example prompt to this tool: "What is the main color of the navigation bar?" or "Is there a large image in the center of the page?". This tool operates on the current view; ensure you've navigated to the correct page first.
     - close_browser_session: Call this when you are finished with all browser tasks to close the browser. Returns a confirmation message.
     - execute_code: Execute a code block. Provide the code. Returns the output of the code.
+    - create_image: Generates an image based on the text input and saves it to the assets/images folder. It also edits existing images based on additional prompts.
 
     When using interactive browser tools:
     1. Start with `browse_url` to navigate and get initial content. The system will then show you a screenshot.
@@ -64,4 +66,5 @@ root_agent = Agent(
         close_browser_session,
         analyze_current_view_with_gemini
         ],
+    sub_agents=[image_agent]
 )
