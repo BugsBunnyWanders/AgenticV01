@@ -33,6 +33,11 @@ const ImageDisplay = ({ images, isVisible, onClose }) => {
 
   return (
     <div className={`image-display ${isVisible ? 'visible' : ''}`}>
+      {/* Alternative close button - always visible in top-left */}
+      <button className="alt-close-button" onClick={onClose}>
+        <span className="close-icon">✕</span>
+      </button>
+
       <div className="image-display-header">
         <div className="header-text">
           <span className="jarvis-text">GENERATED IMAGE</span>
@@ -61,16 +66,22 @@ const ImageDisplay = ({ images, isVisible, onClose }) => {
           </div>
         </div>
         
-        {images.length > 1 && (
-          <div className="image-controls">
-            <button className="nav-button prev" onClick={handlePrevious}>
-              <span>‹</span>
-            </button>
-            <button className="nav-button next" onClick={handleNext}>
-              <span>›</span>
-            </button>
-          </div>
-        )}
+        <div className="image-controls">
+          <button 
+            className={`nav-button prev ${images.length <= 1 ? 'hidden' : ''}`} 
+            onClick={handlePrevious}
+            style={{ opacity: images.length <= 1 ? 0 : 1 }}
+          >
+            <span>‹</span>
+          </button>
+          <button 
+            className={`nav-button next ${images.length <= 1 ? 'hidden' : ''}`} 
+            onClick={handleNext}
+            style={{ opacity: images.length <= 1 ? 0 : 1 }}
+          >
+            <span>›</span>
+          </button>
+        </div>
       </div>
       
       <div className="image-info">

@@ -63,6 +63,97 @@ session_service = InMemorySessionService()
 #     pass 
 
 
+async def poll_for_generated_image(websocket, max_wait_time=15):
+    """Poll for newly generated images and send them to the client"""
+    import time
+    start_time = time.time()
+    
+    print(f"[POLL_IMAGE]: Starting to poll for generated images (max {max_wait_time}s)")
+    
+    # Get baseline of existing images before polling starts
+    images_dir = Path("assets/images")
+    baseline_images = set()
+    if images_dir.exists():
+        baseline_images = {f.name for f in images_dir.iterdir() if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']}
+        print(f"[POLL_IMAGE]: Baseline images: {baseline_images}")
+        
+        # Check if there are any very recent images (created in the last 3 seconds)
+        recent_threshold = start_time - 3  # 3 seconds ago
+        recent_images = []
+        for f in images_dir.iterdir():
+            if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']:
+                if f.stat().st_mtime > recent_threshold:
+                    recent_images.append(f)
+        
+        if recent_images:
+            latest_recent = max(recent_images, key=lambda f: f.stat().st_mtime)
+            print(f"[POLL_IMAGE]: Found very recent image: {latest_recent} (age: {start_time - latest_recent.stat().st_mtime:.1f}s)")
+            
+            # Send this recent image immediately
+            try:
+                with open(latest_recent, "rb") as f_img:
+                    image_data = f_img.read()
+                
+                image_message = {
+                    "mime_type": "image/generated",
+                    "data": base64.b64encode(image_data).decode("utf-8"),
+                    "filename": latest_recent.name
+                }
+                await websocket.send_text(json.dumps(image_message))
+                print(f"[POLL_IMAGE]: Immediately sent recent image {latest_recent.name} ({len(image_data)} bytes)")
+                return  # Stop polling after sending the recent image
+            except Exception as e:
+                print(f"[POLL_IMAGE ERROR]: Failed to send recent image {latest_recent}: {e}")
+    else:
+        print(f"[POLL_IMAGE]: Images directory does not exist: {images_dir}")
+    
+    poll_count = 0
+    while time.time() - start_time < max_wait_time:
+        try:
+            poll_count += 1
+            await asyncio.sleep(0.8)  # Check every 800ms to give more time for generation
+            
+            print(f"[POLL_IMAGE]: Poll #{poll_count} at {time.time() - start_time:.1f}s")
+            
+            if images_dir.exists():
+                current_images = {f.name for f in images_dir.iterdir() if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']}
+                new_images = current_images - baseline_images
+                
+                print(f"[POLL_IMAGE]: Current images: {current_images}")
+                print(f"[POLL_IMAGE]: New images: {new_images}")
+                
+                if new_images:
+                    # Found new images, get the most recent one
+                    image_files = [images_dir / name for name in new_images]
+                    latest_image = max(image_files, key=lambda f: f.stat().st_mtime)
+                    print(f"[POLL_IMAGE]: Found new image: {latest_image}")
+                    
+                    # Wait a bit more to ensure the file is fully written
+                    await asyncio.sleep(0.5)
+                    
+                    try:
+                        with open(latest_image, "rb") as f_img:
+                            image_data = f_img.read()
+                        
+                        image_message = {
+                            "mime_type": "image/generated",
+                            "data": base64.b64encode(image_data).decode("utf-8"),
+                            "filename": latest_image.name
+                        }
+                        await websocket.send_text(json.dumps(image_message))
+                        print(f"[POLL_IMAGE]: Successfully sent generated image {latest_image.name} ({len(image_data)} bytes)")
+                        return  # Stop polling after sending one image
+                    except Exception as e:
+                        print(f"[POLL_IMAGE ERROR]: Failed to read/send image {latest_image}: {e}")
+                        continue
+            else:
+                print(f"[POLL_IMAGE]: Images directory not found during poll #{poll_count}")
+        except Exception as e:
+            print(f"[POLL_IMAGE ERROR]: Poll #{poll_count} failed: {e}")
+            break
+    
+    print(f"[POLL_IMAGE]: Finished polling after {time.time() - start_time:.1f}s and {poll_count} polls - no new images found")
+
 async def agent_to_client_messaging(websocket, live_events):
     """Agent to client communication, handles multi-part messages and screenshot sending."""
     while True:
@@ -105,6 +196,7 @@ async def agent_to_client_messaging(websocket, live_events):
             if event.content and event.content.parts:
                 is_tool_response_text = False # Flag to check if we just sent a tool's text output
                 tool_name_if_any = None
+                function_call_detected = False # Flag to check if a function call was made
 
                 if event.content.role == "tool" and event.content.parts:
                     # Check if it's a function_call part (tool invocation by LLM) or function_response part (tool result)
@@ -124,8 +216,8 @@ async def agent_to_client_messaging(websocket, live_events):
                         audio_data = part.inline_data.data
                         if audio_data:
                             message_to_send = {
-                            "mime_type": "audio/pcm",
-                            "data": base64.b64encode(audio_data).decode("ascii")
+                                "mime_type": "audio/pcm",
+                                "data": base64.b64encode(audio_data).decode("ascii")
                             }
                             log_message = f"audio/pcm: {len(audio_data)} bytes."
                     # REMOVED: Direct image handling from part.inline_data for tool responses
@@ -151,6 +243,24 @@ async def agent_to_client_messaging(websocket, live_events):
                                 tool_name_if_any = "unknown_tool_from_text_part" # Fallback
                                 print(f"[TOOL_DEBUG]: No tool name detected, using fallback: {tool_name_if_any}")
                                 print(f"[TOOL_DEBUG]: Part details - function_response: {part.function_response}, function_call: {part.function_call}")
+                    elif part.function_call:
+                        # Handle function calls even if they don't have text
+                        function_call_detected = True
+                        tool_name_if_any = part.function_call.name
+                        print(f"[FUNCTION_CALL_DEBUG]: Function call detected: {tool_name_if_any}")
+                        print(f"[FUNCTION_CALL_DEBUG]: Function call args: {part.function_call.args}")
+                        log_message = f"function_call: {tool_name_if_any}"
+                        print(f"[AGENT TO CLIENT]: {log_message}")
+                        
+                        # For create_image function calls, poll for newly generated images
+                        if tool_name_if_any == "create_image":
+                            print(f"[IMMEDIATE_IMAGE_CHECK]: create_image function call detected, will poll for new images")
+                            # Start a background task to poll for images
+                            asyncio.create_task(poll_for_generated_image(websocket))
+                        elif "image" in tool_name_if_any.lower() or tool_name_if_any == "long_running_tool":
+                            print(f"[IMMEDIATE_IMAGE_CHECK]: Image-related function call detected ({tool_name_if_any}), will poll for new images")
+                            # Start a background task to poll for images
+                            asyncio.create_task(poll_for_generated_image(websocket))
                     elif part.code_execution_result:
                         # Ensure output is treated as a string
                         output_str = str(part.code_execution_result.output if part.code_execution_result.output is not None else "")
@@ -172,12 +282,12 @@ async def agent_to_client_messaging(websocket, live_events):
                     else:
                         print(f"[AGENT TO CLIENT]: Skipping empty or unhandled part: {part}")
                 
-                # After processing all parts, if a tool response text was sent, check for screenshot or generated images
-                # Only check for screenshots if the tool is one that's expected to produce one.
+                # After processing all parts, check for screenshot or generated images
+                # Check both for tool response text AND function calls
                 browser_tools_that_screenshot = ["browse_url", "click_element_by_id", "type_into_element_by_id", "scroll_page_at_url"]
-                image_generation_tools = ["create_image"]
+                image_generation_tools = ["create_image", "long_running_tool"]
 
-                if is_tool_response_text and tool_name_if_any in browser_tools_that_screenshot:
+                if (is_tool_response_text or function_call_detected) and tool_name_if_any in browser_tools_that_screenshot:
                     print(f"[AGENT TO CLIENT]: Tool '{tool_name_if_any}' text response sent, checking for screenshot: {SCREENSHOT_ACTION_FILENAME}")
                     if os.path.exists(SCREENSHOT_ACTION_FILENAME):
                         try:
@@ -195,76 +305,17 @@ async def agent_to_client_messaging(websocket, live_events):
                     else:
                         print(f"[AGENT TO CLIENT]: Screenshot file {SCREENSHOT_ACTION_FILENAME} not found after tool {tool_name_if_any} execution.")
                 
-                # Check for generated images after image generation tools
-                elif is_tool_response_text and tool_name_if_any in image_generation_tools:
-                    print(f"[AGENT TO CLIENT]: Tool '{tool_name_if_any}' text response sent, checking for generated images in assets/images/")
-                    try:
-                        # Get the most recently modified image file in assets/images
-                        images_dir = Path("assets/images")
-                        print(f"[IMAGE_DEBUG]: Checking images directory: {images_dir.absolute()}, exists: {images_dir.exists()}")
-                        if images_dir.exists():
-                            all_files = list(images_dir.iterdir())
-                            print(f"[IMAGE_DEBUG]: All files in directory: {[f.name for f in all_files]}")
-                            image_files = [f for f in all_files if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']]
-                            print(f"[IMAGE_DEBUG]: Image files found: {[f.name for f in image_files]}")
-                            if image_files:
-                                # Get the most recently modified image
-                                latest_image = max(image_files, key=lambda f: f.stat().st_mtime)
-                                print(f"[AGENT TO CLIENT]: Found latest generated image: {latest_image}")
-                                
-                                # Send the image to the client
-                                with open(latest_image, "rb") as f_img:
-                                    image_data = f_img.read()
-                                
-                                image_message = {
-                                    "mime_type": "image/generated",
-                                    "data": base64.b64encode(image_data).decode("utf-8"),
-                                    "filename": latest_image.name
-                                }
-                                await websocket.send_text(json.dumps(image_message))
-                                print(f"[AGENT TO CLIENT]: Sent generated image {latest_image.name} ({len(image_data)} bytes).")
-                            else:
-                                print(f"[AGENT TO CLIENT]: No image files found in assets/images after image generation.")
-                        else:
-                            print(f"[AGENT TO CLIENT]: assets/images directory not found.")
-                    except Exception as e_image:
-                        print(f"[AGENT TO CLIENT ERROR]: Failed to read/send generated image: {e_image}")
+                # For image generation tools, we rely on the polling mechanism started by function_call detection
+                elif (is_tool_response_text or function_call_detected) and tool_name_if_any in image_generation_tools:
+                    print(f"[AGENT TO CLIENT]: Tool '{tool_name_if_any}' response detected - relying on polling mechanism for image detection")
                 
-                # Also check for any tool response that might be from image generation (fallback detection)
-                elif is_tool_response_text and (not tool_name_if_any or tool_name_if_any == "unknown_tool_from_text_part"):
-                    print(f"[AGENT TO CLIENT]: Tool response with unknown/missing name detected, checking for generated images as fallback")
-                    # Check if the text contains image generation keywords
-                    if any(part.text and ("image" in part.text.lower() or "generated" in part.text.lower() or "created" in part.text.lower()) for part in event.content.parts if part.text):
-                        try:
-                            images_dir = Path("assets/images")
-                            print(f"[IMAGE_DEBUG_FALLBACK]: Checking images directory: {images_dir.absolute()}, exists: {images_dir.exists()}")
-                            if images_dir.exists():
-                                all_files = list(images_dir.iterdir())
-                                print(f"[IMAGE_DEBUG_FALLBACK]: All files in directory: {[f.name for f in all_files]}")
-                                image_files = [f for f in all_files if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']]
-                                print(f"[IMAGE_DEBUG_FALLBACK]: Image files found: {[f.name for f in image_files]}")
-                                if image_files:
-                                    # Get the most recently modified image (within last 10 seconds to avoid old images)
-                                    import time
-                                    current_time = time.time()
-                                    recent_images = [f for f in image_files if current_time - f.stat().st_mtime < 10]
-                                    if recent_images:
-                                        latest_image = max(recent_images, key=lambda f: f.stat().st_mtime)
-                                        print(f"[AGENT TO CLIENT]: Found recent generated image via fallback: {latest_image}")
-                                        
-                                        # Send the image to the client
-                                        with open(latest_image, "rb") as f_img:
-                                            image_data = f_img.read()
-                                        
-                                        image_message = {
-                                            "mime_type": "image/generated",
-                                            "data": base64.b64encode(image_data).decode("utf-8"),
-                                            "filename": latest_image.name
-                                        }
-                                        await websocket.send_text(json.dumps(image_message))
-                                        print(f"[AGENT TO CLIENT]: Sent generated image via fallback {latest_image.name} ({len(image_data)} bytes).")
-                        except Exception as e_image:
-                            print(f"[AGENT TO CLIENT ERROR]: Failed to read/send generated image via fallback: {e_image}")
+                # Fallback image detection for cases where tool name might not be detected properly
+                elif is_tool_response_text and any(part.text and ("image" in part.text.lower() or "generated" in part.text.lower() or "created" in part.text.lower()) for part in event.content.parts if part.text):
+                    print(f"[AGENT TO CLIENT]: Potential image generation detected in text response - starting fallback polling")
+                    # Start polling as fallback
+                    asyncio.create_task(poll_for_generated_image(websocket))
+                
+                # Note: Removed immediate image checking to rely on polling mechanism for better timing control
 
             elif event.content: 
                  print(f"[AGENT TO CLIENT]: Event has content but no parts: {event.content}")

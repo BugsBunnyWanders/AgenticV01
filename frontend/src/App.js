@@ -75,7 +75,7 @@ function App() {
 
   return (
     <div className="App">
-      <div className={`main-interface ${showImageDisplay ? 'docked' : ''}`}>
+      <div className={`main-interface ${showImageDisplay ? 'docked visible' : ''}`}>
         <header className="app-header">
           FRIDAY - Interface
         </header>

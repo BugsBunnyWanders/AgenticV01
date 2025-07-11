@@ -38,8 +38,22 @@ body {
 }
 
 .main-interface.docked {
-  width: 50%;
-  transform: translateX(-25%);
+  width: 400px;
+  position: fixed;
+  right: 0;
+  top: 0;
+  height: 100vh;
+  background: linear-gradient(135deg, rgba(10, 10, 10, 0.95) 0%, rgba(26, 26, 29, 0.95) 50%, rgba(10, 10, 10, 0.95) 100%);
+  backdrop-filter: blur(15px);
+  border-left: 2px solid #61dafb;
+  box-shadow: -10px 0 30px rgba(97, 218, 251, 0.3);
+  z-index: 1000;
+  transform: translateX(100%);
+  transition: transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.main-interface.docked.visible {
+  transform: translateX(0);
 }
 
 .app-header {
@@ -284,7 +298,14 @@ body {
 @media (max-width: 768px) {
   .main-interface.docked {
     width: 100%;
-    transform: translateY(-50%);
+    position: fixed;
+    right: 0;
+    top: 0;
+    transform: translateY(-100%);
+  }
+
+  .main-interface.docked.visible {
+    transform: translateY(0);
   }
   
   .sphere-container {
